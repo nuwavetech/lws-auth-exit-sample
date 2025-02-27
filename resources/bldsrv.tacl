@@ -1,0 +1,49 @@
+?tacl macro
+#frame
+
+[#push
+  cc
+  compiler
+  hostarch
+  lstfile
+  objfile
+  srcfile
+]
+
+== Determine the host architecture. First character of TOSVERSION
+== maps to OS version, which determines architecture. Q=G(TNS/R),
+== R=H, T=J (TNS/E), V=X (TNS/X)
+#set hostarch [ #tosversion ]
+#set hostarch [ #charget hostarch 1 for 1 ]
+[ #if hostarch '=' "Q" |then|
+    #set compiler nmc
+  |else|
+    #set compiler ccomp
+]
+
+#set srcfile stknsrvc
+#set lstfile stknsrvl
+#set objfile stknsrv
+
+#output Compiling [srcfile] ...
+
+[compiler] / in [srcfile], out [lstfile] / [objfile] ; extensions, runnable, &
+saveabend, symbols, inspect, allow_cplusplus_comments, suppress, &
+SSV0 "[#defaults/current/]", SSV1 "$system.system", SSV2 "$system.zsysdefs"
+
+#set cc [ :_completion:completioncode ]
+[#case [cc]
+  | 0 |
+    #output Completion code [cc] ... compilation of '[SrcFile]' produced no warnings or errors.
+    #output Program file [objfile] is ready.
+  | 1 |
+     fup copy [lstFile],, fold
+     #output Completion code [cc] ... compilation of '[SrcFile]' produced warnings.
+
+  | otherwise |
+     fup copy [lstFile],, fold
+     #output Completion code [cc] ... compilation of '[SrcFile]' produced warnings and errors.
+]
+#output
+
+#unframe

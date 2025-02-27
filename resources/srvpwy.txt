@@ -1,0 +1,15 @@
+reset server
+set server cpus           1:0
+set server createdelay    0 secs
+set server deletedelay    20 secs
+set server highpin        on
+set server linkdepth      1
+set server maxservers     20
+set server maxlinks       4
+set server numstatic      0
+set server program        stknsrv
+set server tmf            on
+set server debug          off
+set server in             $zhome
+set server out            $zhome
+add server lws-tkn-svr
