@@ -16,12 +16,24 @@
 #include <strings.h>
 
 #include "zsysc"
+
+// Helper macros for syntax check under smart editors.
+#if defined(__TANDEM)
+#define OMIT /**/
+#else
+int omitParam;
+#define OMIT omitParam
+#endif
 #pragma list
 
-// LWAE.H is a header produced from the DDL LWAEDDL included with LightWave.
+// LWAE.H is a header produced from the DDL source LWAEDDL included with
+// LightWave Server. It must be available for this program to compile.
 #include "lwae.h"
 
-#include "stknsrv.h"
+// Standard arguments for request handler functions.
+#define STKNSRV_FUNCTION_ARGS                                                  \
+  void *buffer, long long length, long long tag,                               \
+      zsys_ddl_recvinformation2_def *info
 
 //  Static data.
 
