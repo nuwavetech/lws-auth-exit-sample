@@ -72,3 +72,9 @@ add server lws-tkn-svr
 The name given to the serverclass, in this case ```lws-tkn-svr```, must be the same name specified in the LightWave Server Auth Exit Rule attached to the Access Control Policy for the Service for REST requests.
 
 For further details on Auth Exit configuration, IPMs, and functionality, visit the online NuWave Documentation Center: https://docs.nuwavetech.com/.
+
+## Token Sets in this sample
+
+The Token Sets in this sample are for illustrative purposes only.
+
+Both Token Set names and Token Names are up to the user. However, the token set names must be coordinated between the LightWave Server Auth Exits configuration and the Token Server.

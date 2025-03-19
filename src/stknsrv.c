@@ -26,6 +26,8 @@ int omitParam;
 #endif
 #pragma list
 
+#define SET_BIT(num, pos) ((num) |= (1 << (15 - (pos))))
+
 // LWAE.H is a header produced from the DDL source LWAEDDL included with
 // LightWave Server. It must be available for this program to compile.
 #include "lwae.h"
@@ -48,6 +50,15 @@ static char processName[32];
 
 //  Local functions.
 static void logMessage(const char* format, ...);
+static char* parseUserPass(const char* input);
+static char* trimWhitespace(char* str);
+
+// In case strdup not available.
+#if defined(strdup)
+#define utilStrdup strdup
+#else
+char* utilStrdup(const char* src);
+#endif
 
 //  Request Handlers.
 
@@ -338,6 +349,20 @@ static void handleInfoTknSetRequest(STKNSRV_FUNCTION_ARGS) {
             sizeof(rp.tkn_set[0].tkn_name));
     rp.tkn_set[0].tkn_name_len = (int)strlen(rp.tkn_set[0].tkn_name);
 
+  } else if (strncmp(rq->tkn_set_name,
+                     "test-token-set-g", // Guardian User ID/password Token
+                     rq->tkn_set_name_len) == 0) {
+    rp.tkn_set_ttl = 90; // Seconds for LightWave Server to retain in cache
+    rp.tkn_count = 1;
+
+    rp.tkn_set[0].tkn_type = lw_ae_tkn_type_header;
+    rp.tkn_set[0].base64_decode = 1;
+    strncpy(rp.tkn_set[0].tkn_format, "%s", sizeof(rp.tkn_set[0].tkn_format));
+    rp.tkn_set[0].tkn_format_len = (int)strlen(rp.tkn_set[0].tkn_format);
+    strncpy(rp.tkn_set[0].tkn_name, "NSK-Authorization",
+            sizeof(rp.tkn_set[0].tkn_name));
+    rp.tkn_set[0].tkn_name_len = (int)strlen(rp.tkn_set[0].tkn_name);
+
   } else {
     memset(&error_rp, 0, sizeof(error_rp));
     error_rp.header.rp_code = lw_ae_rp_error;
@@ -372,14 +397,61 @@ static void handleVerifyTknSetRequest(STKNSRV_FUNCTION_ARGS) {
   lw_ae_verify_tkn_set_v1_rq_def* rq = buffer;
   lw_ae_verify_tkn_set_v1_rp_def rp;
 
-  // NOTE: This would be the point where the token values could be verified.
-
-  // Simulate that the token values in the request are valid by returning
-  // success.
+  // Initialize the reply buffer for success.
   memset(&rp, 0, sizeof(rp));
   rp.header.rp_code = lw_ae_rp_success;
   memcpy((char*)&rp.tkn_set_name, rq->tkn_set_name, rq->tkn_set_name_len);
   rp.tkn_set_name_len = rq->tkn_set_name_len;
+
+  // NOTE: This would be the point where the token values would be verified, or
+  // the token server makes a "callout" to a token provider for verification.
+
+  if (strncmp(rq->tkn_set_name, "test-token-set-g", rq->tkn_set_name_len) ==
+      0) {
+    //*******************************
+    //*******************************
+    // This token set name is just a sample, defined as having one token with
+    // the name "NSK-Authorization". If this token set were defined with
+    // multiple tokens, each would have to be indivisually verified. For the
+    // sample, things are kept simple.
+    //*******************************
+    //*******************************
+
+    // Verify a Guardian User and password received as a token. The token value
+    // sent in the request is formatted as "userid:password" (the same as in
+    // basic HTTP authentication). However, USER_AUTHENTICATE_ requires the user
+    // ID and password formatted as "userid, password". We do NOT request logon.
+    char* inputText;
+    short options = 0;
+    short statusFlags;
+    short status;
+    short rc;
+
+    // The first token in this token set is defined as the user ID and password.
+    inputText = parseUserPass(rq->tkn_set[0].tkn_value);
+    if (inputText == NULL) {
+      rp.header.rp_code = lw_ae_rp_error;
+    } else {
+      SET_BIT(options, 8); // Not in dialog mode; uid/pwd in inputText
+
+      rc = USER_AUTHENTICATE_(inputText, (short)strlen(inputText), options,
+                              OMIT, &status, &statusFlags);
+      if (rc != 0) {
+
+        // Analyze the error if needed.
+
+        // NOTE: A lw_ae_token_error_rp_def reply is NOT used here because this
+        // was not a processing error, but a data content error.
+        rp.header.rp_code = lw_ae_rp_error;
+      }
+
+      free(inputText);
+    }
+  } else {
+    // Do something for other token sets?
+  }
+
+  // Return the result of the verification.
 
   rp.tkn_set_ttl = 45; // seconds for LightWave Server to retain in cache
 
@@ -433,5 +505,89 @@ static void logMessage(const char* format, ...) {
     FILE_CLOSE_(filenum);
   }
 }
+
+// Function to parse "userID:password" and return "userID, password"
+// Caller must free returned string.
+static char* parseUserPass(const char* input) {
+  size_t output_size;
+  char* password;
+  char* userID;
+  char* output;
+  char* copy;
+
+  if (input == NULL)
+    return NULL;
+
+  copy = utilStrdup(input); // Make a mutable copy of the input
+  if (copy == NULL)
+    return NULL;
+
+  userID = copy;
+  password = strchr(copy, ':');
+  if (password == NULL) {
+    free(copy);
+    return NULL; // Invalid format (no colon found)
+  }
+
+  *password = '\0'; // Split into two strings
+  password++;       // Move past the colon
+
+  userID = trimWhitespace(userID);
+  password = trimWhitespace(password);
+
+  // Allocate output string with space for "userID, password" (including null
+  // terminator)
+  output_size = strlen(userID) + strlen(password) + 3;
+  output = malloc(output_size);
+  if (output == NULL) {
+    free(copy);
+    return NULL;
+  }
+
+  snprintf(output, output_size, "%s, %s", userID, password);
+  free(copy);
+
+  return output;
+}
+
+// Function to trim leading and trailing whitespace
+static char* trimWhitespace(char* str) {
+  char* end;
+
+  // Trim leading space
+  while (isspace((unsigned char)*str))
+    str++;
+
+  // If all spaces, return an empty string
+  if (*str == 0)
+    return str;
+
+  // Trim trailing space
+  end = str + strlen(str) - 1;
+  while (end > str && isspace((unsigned char)*end))
+    end--;
+
+  // Write new null terminator
+  *(end + 1) = '\0';
+
+  return str;
+}
+
+// In case strdup not available.
+#if !defined(strdup)
+static char* utilStrdup(const char* src) {
+  size_t len;
+  char* dst;
+
+  len = strlen(src) + 1;
+  dst = malloc(len);
+  if (dst == NULL) {
+    return NULL;
+  }
+  memcpy(dst, src, len);
+
+  return dst;
+}
+#endif
 
 //  End of file.
